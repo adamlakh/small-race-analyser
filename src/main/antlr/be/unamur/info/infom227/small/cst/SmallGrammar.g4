@@ -16,6 +16,12 @@ FUNCTION: 'function';
 
 RETURN: 'return';
 
+GLOBAL: 'global';
+
+SPAWN: 'spawn';
+
+JOIN: 'join';
+
 // Separators / Punctuators
 
 LBRACE: '{';
@@ -90,7 +96,11 @@ WS: [ \t]+ -> skip;
 
 // Program
 
-program: function*;
+program: globalDecl* function*;
+
+globalDecl: GLOBAL IDENTIFIER ASSIGN literal SEMICOLON;
+
+literal: NUM | TRUE | FALSE;
 
 function: FUNCTION IDENTIFIER LPAR parameters RPAR body;
 
@@ -100,7 +110,11 @@ parameters: (IDENTIFIER (COMMA IDENTIFIER)*)?;
 
 body: LBRACE stmt* RBRACE;
 
-stmt: assignStmt | ifStmt | whileStmt | returnStmt;
+stmt: assignStmt | ifStmt | whileStmt | returnStmt | spawnStmt | joinStmt;
+
+spawnStmt: SPAWN LPAR IDENTIFIER COMMA funcCall RPAR SEMICOLON;
+
+joinStmt: JOIN LPAR IDENTIFIER RPAR SEMICOLON;
 
 assignStmt: IDENTIFIER ASSIGN (expr | funcCall) SEMICOLON;
 
