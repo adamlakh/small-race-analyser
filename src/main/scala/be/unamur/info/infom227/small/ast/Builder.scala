@@ -11,12 +11,25 @@ def build(programCst: SmallGrammarParser.ProgramContext): Try[Program] = {
   Builder.visitProgram(programCst)
 }
 
-type VisitorType = Try[Program] | Function | List[String] | List[Statement] | Statement | List[Expression] | FunctionCall | Expression | ArithmeticBinaryOperator | IntegerComparisonOperator | EqualComparisonOperator | BooleanBinaryOperator
+type VisitorType = Try[Program] | Global | Function | List[String] | List[Statement] | Statement | List[Expression] | FunctionCall | Expression | ArithmeticBinaryOperator | IntegerComparisonOperator | EqualComparisonOperator | BooleanBinaryOperator
 
 private object Builder extends SmallGrammarBaseVisitor[VisitorType] {
   // Program
   override def visitProgram(ctx: SmallGrammarParser.ProgramContext): Try[Program] = {
     for {
+      globals <- ctx
+        .globalDecl
+        .asScala.foldLeft(Success(Map.empty): Try[Map[String, Global]]) { (acc, globalCtx) =>
+          for {
+            globals <- acc
+            globalName = globalCtx.IDENTIFIER.getText
+            newGlobals <- if (globals.contains(globalName)) {
+              Failure(BuiltAstException(s"Duplicate global definition: ${globalName}"))
+            } else {
+              Success(globals + (globalName -> visitGlobalDecl(globalCtx)))
+            }
+          } yield newGlobals
+        }
       functions <- ctx
         .function
         .asScala.foldLeft(Success(Map.empty): Try[Map[String, Function]]) { (acc, functionCtx) =>
@@ -30,8 +43,19 @@ private object Builder extends SmallGrammarBaseVisitor[VisitorType] {
             }
           } yield newFunctions
         }
-    } yield Program(functions)
+    } yield Program(globals, functions)
   }
+
+  override def visitGlobalDecl(ctx: SmallGrammarParser.GlobalDeclContext): Global = {
+    Global(ctx.start.getLine, ctx.IDENTIFIER.getText, visitLiteral(ctx.literal))
+  }
+
+  override def visitLiteral(ctx: SmallGrammarParser.LiteralContext): ArithmeticConstant | BooleanConstant =
+    ctx.getText match {
+      case "True"  => BooleanConstant(true)
+      case "False" => BooleanConstant(false)
+      case digits  => ArithmeticConstant(digits.toInt)
+    }
 
   override def visitFunction(ctx: SmallGrammarParser.FunctionContext): Function = {
     Function(ctx.start.getLine, visitParameters(ctx.parameters), visitBody(ctx.body))
@@ -65,6 +89,10 @@ private object Builder extends SmallGrammarBaseVisitor[VisitorType] {
       visitWhileStmt(ctx.whileStmt)
     } else if (ctx.returnStmt != null) {
       visitReturnStmt(ctx.returnStmt)
+    } else if (ctx.spawnStmt != null) {
+      visitSpawnStmt(ctx.spawnStmt)
+    } else if (ctx.joinStmt != null) {
+      visitJoinStmt(ctx.joinStmt)
     } else {
       throw new AssertionError(s"Unsupported statement : ${ctx.getText}")
     }
@@ -90,6 +118,14 @@ private object Builder extends SmallGrammarBaseVisitor[VisitorType] {
 
   override def visitReturnStmt(ctx: SmallGrammarParser.ReturnStmtContext): ReturnStatement = {
     ReturnStatement(ctx.start.getLine, visitExpr(ctx.expr))
+  }
+
+  override def visitSpawnStmt(ctx: SmallGrammarParser.SpawnStmtContext): SpawnStatement  = {
+    SpawnStatement(ctx.start.getLine, ctx.IDENTIFIER.getText, visitFuncCall(ctx.funcCall))
+  }
+
+  override def visitJoinStmt(ctx: SmallGrammarParser.JoinStmtContext): JoinStatement = {
+    JoinStatement(ctx.start.getLine, ctx.IDENTIFIER.getText)
   }
 
   // Call

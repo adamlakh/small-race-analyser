@@ -144,8 +144,14 @@ case class WhileStatement(lineNumber: Int, condition: BooleanExpression, body: L
 
 case class ReturnStatement(lineNumber: Int, expression: Expression) extends Statement
 
+case class SpawnStatement(lineNumber: Int, threadName: String, call: FunctionCall) extends Statement
+
+case class JoinStatement(lineNumber: Int, threadName: String) extends Statement
+
 // Program
+
+case class Global(lineNumber: Int, name: String, value: ArithmeticConstant | BooleanConstant)
 
 case class Function(lineNumber: Int, parameters: List[String], body: List[Statement])
 
-case class Program(functions: Map[String, Function])
+case class Program(globals: Map[String, Global], functions: Map[String, Function])
