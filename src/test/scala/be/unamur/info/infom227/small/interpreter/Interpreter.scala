@@ -1,194 +1,133 @@
 package be.unamur.info.infom227.small.interpreter
 
-import be.unamur.info.infom227.small.{ast, cst, interpreter}
+import be.unamur.info.infom227.small.{ast, cst}
+import be.unamur.info.infom227.small.ast.Program
 import org.antlr.v4.runtime.CharStreams
 import org.scalatest.funsuite.AnyFunSuite
 
-import scala.util.Success
+import scala.util.{Failure, Success}
 
-class Interpreter extends AnyFunSuite {
-  Seq(
-    (
-      "execute an addition operation",
-      """
-      function main() {
-          a = 3 + 2;
-          return a;
-      }
-      """,
-      5
-    ),
-    (
-      "execute a subtraction operation",
-      """
-      function main() {
-          a = 3 - 2;
-          return a;
-      }
-      """,
-      1
-    ),
-    (
-      "execute a multiple operation",
-      """
-      function main() {
-          a = 6 * 2;
-          return a;
-      }
-      """,
-      12
-    ),
-    (
-      "execute a division operation",
-      """
-      function main() {
-          a = 6 / 2;
-          return a;
-      }
-      """,
-      3
-    ),
-    (
-      "execute a logical AND operation",
-      """
-      function main() {
-          a = True and False;
-          return a;
-      }
-      """,
-      false
-    ),
-    (
-      "execute a logical OR operation",
-      """
-      function main() {
-          a = True or False;
-          return a;
-      }
-      """,
-      true
-    ),
-    (
-      "execute a simple if statement",
-      """
-      function main() {
-          x = True;
-          if (x) {
-              a = 4;
-          } else {
-              a = 2;
-          }
-          return a;
-      }
-      """,
-      4
-    ),
-    (
-      "execute a simple while statement",
-      """
-      function main() {
-          i = 1;
-          while (i < 5) {
-              i = i * 2;
-          }
-          return i;
-      }
-      """,
-      8
-    ),
-    (
-      "execute a simple function call",
-      """
-      function foo(a) {
-          return a + 1;
-      }
-      function main() {
-          i = 1;
-          x = foo(i);
-          return x;
-      }
-      """,
-      2
-    ),
-    (
-      "execute a shadowing function call",
-      """
-      function foo(a) {
-          i = 5;
-          return i + 1;
-      }
-      function main() {
-          i = 1;
-          x = foo(i);
-          return x;
-      }
-      """,
-      6
-    ),
-    (
-      "execute an unused shadowing function call",
-      """
-      function foo(a) {
-          i = 5;
-          return i + 1;
-      }
-      function main() {
-          i = 1;
-          x = foo(i);
-          return i;
-      }
-      """,
-      1
-    ),
-    (
-      "execute the fibonacci function",
-      """
-      function fib(x) {
-          if (x <= 1) {
-              return x;
-          } else {
-              minus1 = fib(x - 1);
-              minus2 = fib(x - 2);
-              return minus1 + minus2;
+class TestInterpreter extends AnyFunSuite {
+
+  type Globals = Map[String, VariableType]
+
+  def parseProgram(source: String): Program =
+    (for {
+      tree <- cst.parse(CharStreams.fromString(source))
+      program <- ast.build(tree)
+    } yield program).get
+
+  // Explores EVERY interleaving. Returns every possible outcome:
+  // Right(final globals) or Left(error message).
+  def outcomes(program: Program, fuel: Int = 300): Set[Either[String, Globals]] = {
+    val initial = initialState(program, "main", Nil).get
+
+    def explore(state: State, fuel: Int): Set[Either[String, Globals]] =
+      if (state.threads.isEmpty) Set(Right(state.globals))
+      else if (fuel == 0) Set(Left("out of fuel"))
+      else enabled(state) match {
+        case Nil => Set(Left("deadlock"))
+        case ids =>
+          ids.toSet.flatMap { id =>
+            step(program, state, id) match {
+              case Success(next) => explore(next, fuel - 1)
+              case Failure(e)    => Set(Left(e.getMessage))
+            }
           }
       }
+
+    explore(initial, fuel)
+  }
+
+  test("sequential: call + while still work") {
+    val p = parseProgram("""
+      global r = 0;
+      function sum(n) { i = 0; s = 0; while (i < n) { s = s + i; i = i + 1; } return s; }
+      function main() { r = sum(5); return 0; }
+    """)
+    assert(outcomes(p) == Set(Right(Map("r" -> 10))))
+  }
+
+  test("spawn + join: child's effect is visible after join, whatever the schedule") {
+    val p = parseProgram("""
+      global c = 0;
+      function inc() { c = c + 1; return 0; }
+      function main() { spawn(t1, inc()); join(t1); c = c + 10; return 0; }
+    """)
+    assert(outcomes(p) == Set(Right(Map("c" -> 11))))
+  }
+
+  test("atomic increment: 2 threads always give 2") {
+    val p = parseProgram("""
+      global c = 0;
+      function inc() { c = c + 1; return 0; }
       function main() {
-          x = fib(15);
-          return x;
+        spawn(t1, inc()); spawn(t2, inc());
+        join(t1); join(t2);
+        return 0;
       }
-      """,
-      610
-    ),
-    (
-      "execute the power function (Syllabus - Chapter 2)",
-      """
-      function power(x, n) {
-          r = 1;
-          while (n > 0) {
-              r = r * x;
-              n = n - 1;
-          }
-          return r;
-      }
+    """)
+    assert(outcomes(p) == Set(Right(Map("c" -> 2))))
+  }
 
+  test("racy increment (read / compute / write): lost update possible, so 1 or 2") {
+    val p = parseProgram("""
+      global c = 0;
+      function inc() { tmp = c; tmp = tmp + 1; c = tmp; return 0; }
       function main() {
-          result = power(2, 3);
-          return result;
+        spawn(t1, inc()); spawn(t2, inc());
+        join(t1); join(t2);
+        return 0;
       }
-      """,
-      8
-    )
-  ).foreach { (name, code, expected) =>
-    test(name) {
-      val charStream = CharStreams.fromString(code)
+    """)
+    assert(outcomes(p) == Set(Right(Map("c" -> 1)), Right(Map("c" -> 2))))
+  }
 
-      val result = for {
-        programContext <- cst.parse(charStream)
-        program <- ast.build(programContext)
-        result <- interpreter.execute(program, "main")
-      } yield result
+  test("spawn arguments are evaluated at spawn time, locals are per thread") {
+    val p = parseProgram("""
+      global c = 0;
+      function add(n) { c = c + n; return 0; }
+      function main() {
+        spawn(t1, add(5)); spawn(t2, add(7));
+        join(t1); join(t2);
+        return 0;
+      }
+    """)
+    assert(outcomes(p) == Set(Right(Map("c" -> 12))))
+  }
 
-      assert(Success(expected) == result)
+  test("join on itself deadlocks") {
+    val p = parseProgram("""
+      function main() { join(main); return 0; }
+    """)
+    assert(outcomes(p) == Set(Left("deadlock")))
+  }
+
+  test("spawning an existing thread name fails") {
+    val p = parseProgram("""
+      function f() { return 0; }
+      function main() { spawn(main, f()); return 0; }
+    """)
+    assert(outcomes(p).forall(_.isLeft))
+  }
+
+  test("error in a child thread is reported") {
+    val p = parseProgram("""
+      function bad() { x = 1 / 0; return 0; }
+      function main() { spawn(t1, bad()); join(t1); return 0; }
+    """)
+    assert(outcomes(p).forall(_.isLeft))
+  }
+
+  test("run() works with different schedulers") {
+    val p = parseProgram("""
+      global c = 0;
+      function inc() { c = c + 1; return 0; }
+      function main() { spawn(t1, inc()); spawn(t2, inc()); join(t1); join(t2); return 0; }
+    """)
+    for (sched <- Seq[Scheduler]((_, ids) => ids.head, (_, ids) => ids.last)) {
+      val result = be.unamur.info.infom227.small.interpreter.execute(p, "main", Nil, sched)
+      assert(result.get.globals == Map("c" -> 2))
     }
   }
 }

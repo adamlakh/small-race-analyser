@@ -72,20 +72,23 @@ def handleExit[T](tryResult: Try[T], f: T => Unit): Unit = {
   action match {
     case "run" =>
       val tryResult = for {
-        arguments <- others.foldRight(Try(List.empty[VariableType])) { (string, acc) =>
+        arguments <- others.filterNot(_.startsWith("-")).foldRight(Try(List.empty[VariableType])) { (string, acc) =>
           for {
             args <- acc
             arg <- parseArgument(string)
           } yield arg :: args
         }
         program <- buildAstFromFileName(file)
-        result <- interpreter.execute(program, "main", arguments)
-      } yield result
+        finalState <- interpreter.execute(program, "main", arguments, (_, ids) => ids.head)
+      } yield finalState
 
       handleExit(
         tryResult,
-        returnValue => {
-          println(returnValue)
+        finalState => {
+          println("Final globals:")
+          finalState.globals.toList.sortBy(_._1).foreach { (name, value) =>
+            println(s"  $name = $value")
+          }
         }
       )
     case "zero-analysis" =>

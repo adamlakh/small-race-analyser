@@ -21,6 +21,7 @@ class TestAstBuilder extends AnyFunSuite {
       }
       """,
       Program(
+        Map.empty,
         Map(
           "main" -> Function(
             2,
@@ -84,6 +85,7 @@ class TestAstBuilder extends AnyFunSuite {
       }
       """,
       Program(
+        Map.empty,
         Map(
           "main" -> Function(
             2,
@@ -181,6 +183,7 @@ class TestAstBuilder extends AnyFunSuite {
       }
       """,
       Program(
+        Map.empty,
         Map(
           "main" -> Function(
             2,
@@ -241,6 +244,7 @@ class TestAstBuilder extends AnyFunSuite {
       }
       """,
       Program(
+        Map.empty,
         Map(
           "main" -> Function(
             2,
@@ -300,6 +304,7 @@ class TestAstBuilder extends AnyFunSuite {
       }
       """,
       Program(
+        Map.empty,
         Map(
           "foo" -> Function(
             2,
