@@ -218,6 +218,16 @@ def handleExit[T](tryResult: Try[T], f: T => Unit): Unit = {
           printAnalysis(intervalAnalyses, others.contains("-v"))
         }
       )
+
+    case "race-analysis" =>
+      val tryResult = for {
+        program <- buildAstFromFileName(file)
+      } yield cfg.build(program)
+
+      handleExit(
+        tryResult,
+        cfgs => cfgs.foreach((name, c) => println(c.dot(name)))
+      )
     case action =>
       println(f"Unknown action: $action")
       System.exit(UNKNOWN_ACTION_ERROR_CODE)
