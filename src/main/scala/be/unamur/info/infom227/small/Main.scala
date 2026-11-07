@@ -222,12 +222,21 @@ def handleExit[T](tryResult: Try[T], f: T => Unit): Unit = {
     case "race-analysis" =>
       val tryResult = for {
         program <- buildAstFromFileName(file)
-      } yield cfg.build(program)
+        cfgs = cfg.build(program)
+        globals = getGlobals(program)
+      } yield (program, cfgs, globals)
 
       handleExit(
         tryResult,
-        cfgs => cfgs.foreach((name, c) => println(c.dot(name)))
+        (program, cfgs, globals) => {
+          println(s"Globals: ${globals.mkString(", ")}")
+
+          getReadsAndWrites(program).foreach {(name, access) =>
+            println(s"$name: reads=${access.reads} writes=${access.writes}")
+          }
+        }
       )
+
     case action =>
       println(f"Unknown action: $action")
       System.exit(UNKNOWN_ACTION_ERROR_CODE)
