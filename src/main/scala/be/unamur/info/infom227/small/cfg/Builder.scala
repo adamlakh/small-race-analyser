@@ -1,6 +1,6 @@
 package be.unamur.info.infom227.small.cfg
 
-import be.unamur.info.infom227.small.ast.{AssignStatement, BooleanConstant, BooleanExpression, Function, IfStatement, Program, ReturnStatement, Statement, WhileStatement}
+import be.unamur.info.infom227.small.ast.{AssignStatement, BooleanConstant, BooleanExpression, Function, IfStatement, Program, ReturnStatement, Statement, WhileStatement, SpawnStatement, JoinStatement}
 import be.unamur.info.infom227.small.cfg.ProgramPoint.StatementPoint
 
 import scala.collection.{SortedMap, mutable}
@@ -50,6 +50,8 @@ private def analyseBody(edges: Edges, previousPoints: PreviousPoints, body: List
         case ifStatement: IfStatement => analyseIfStatement(edges, currentPreviousEdges, ifStatement)
         case whileStatement: WhileStatement => analyseWhileStatement(edges, currentPreviousEdges, whileStatement)
         case returnStatement: ReturnStatement => analyseReturnStatement(edges, currentPreviousEdges, returnStatement)
+        case spawnStatement: SpawnStatement => analyseSpawnStatement(edges, currentPreviousEdges, spawnStatement)
+        case joinStatement: JoinStatement => analyseJoinStatement(edges, currentPreviousEdges, joinStatement)
       }
 
       currentPreviousEdges = stmtResultPoints.previousPoints
@@ -108,3 +110,24 @@ private def analyseReturnStatement(
 
   ResultPoints(Set.empty, Set((programPoint, BooleanConstant(true))))
 }
+
+private def analyseSpawnStatement(
+ edges: Edges,
+ previousEdges: PreviousPoints,
+ spawnStatement: SpawnStatement
+): ResultPoints = {
+  val programPoint = createProgramPoint(edges, previousEdges, StatementPoint(spawnStatement))
+
+  ResultPoints(Set((programPoint, BooleanConstant(true))), Set.empty)
+}
+
+private def analyseJoinStatement(
+  edges: Edges,
+  previousEdges: PreviousPoints,
+  joinStatement: JoinStatement
+): ResultPoints = {
+  val programPoint = createProgramPoint(edges, previousEdges, StatementPoint(joinStatement))
+
+  ResultPoints(Set((programPoint, BooleanConstant(true))), Set.empty)
+}
+
