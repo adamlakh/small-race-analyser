@@ -224,16 +224,19 @@ def handleExit[T](tryResult: Try[T], f: T => Unit): Unit = {
         program <- buildAstFromFileName(file)
         cfgs = cfg.build(program)
         globals = getGlobals(program)
-      } yield (program, cfgs, globals)
+        accesses = getReadsAndWrites(program)
+        raceAnalyses <- cfgsAnalysis(
+          cfgs,
+          (_, cfg) => Success(RaceAnalysis(cfg, globals, accesses)),
+          (name, _) => Success(TableObserver(table = Table(bottomSymbol = RaceAnalysisAbstractValue.Bottom.toString)))
+        )
+      } yield raceAnalyses
 
       handleExit(
         tryResult,
-        (program, cfgs, globals) => {
-          println(s"Globals: ${globals.mkString(", ")}")
-
-          getReadsAndWrites(program).foreach {(name, access) =>
-            println(s"$name: reads=${access.reads} writes=${access.writes}")
-          }
+        raceAnalyses => {
+          printTitle("Race Analysis")
+          printAnalysis(raceAnalyses, others.contains("-v"))
         }
       )
 

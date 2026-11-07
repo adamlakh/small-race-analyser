@@ -2,7 +2,7 @@
     <configuration default="false" name="race-analysis" type="Application" factoryName="Application">
         <option name="MAIN_CLASS_NAME" value="be.unamur.info.infom227.small.main" />
         <module name="Small.main" />
-        <option name="PROGRAM_PARAMETERS" value="race-analysis data/race.small" />
+        <option name="PROGRAM_PARAMETERS" value="race-analysis data/race.small -v" />
         <extension name="coverage">
             <pattern>
                 <option name="PATTERN" value="be.unamur.info.infom227.small.*" />
