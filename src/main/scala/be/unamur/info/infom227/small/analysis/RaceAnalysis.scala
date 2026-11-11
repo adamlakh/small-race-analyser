@@ -71,9 +71,14 @@ class RaceAnalysis(cfg: Cfg, globals: Set[String], accesses: Map[String, Access]
         raceAbstractState.joinThread(threadName)
       }
       case _ => {
+        val callAccess = statement match {
+          case AssignStatement(_, _, functionCall: FunctionCall) =>
+            accesses.getOrElse(functionCall.name, Access(Set.empty, Set.empty))
+          case _ => Access(Set.empty, Set.empty)
+        }
 
-        val statementAccess = Access(getReadsOfStatement(statement).filter(globals.contains), getWritesOfStatement(statement).filter(globals.contains))
-
+        val statementAccess = Access(getReadsOfStatement(statement).filter(globals.contains) ++ callAccess.reads,
+          getWritesOfStatement(statement).filter(globals.contains) ++ callAccess.writes)
         val conflicts = (for {
           SpawnedThread(_, functionName) <- raceAbstractState.threads
           global <- getRaceConflict(statementAccess, accesses(functionName))
