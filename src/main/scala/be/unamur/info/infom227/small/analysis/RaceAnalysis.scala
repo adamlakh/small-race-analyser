@@ -52,12 +52,20 @@ class RaceAnalysis(cfg: Cfg, globals: Set[String], accesses: Map[String, Access]
       case SpawnStatement(lineNumber, threadName, functionCall: FunctionCall) => {
         val newState = raceAbstractState.spawnThread(threadName, functionCall.name)
 
-        val conflicts = (for {
+        val threadsConflicts = (for {
           SpawnedThread(threadName1, functionName1) <- newState.threads
           SpawnedThread(threadName2, functionName2) <- newState.threads
           if threadName1 != threadName2
           global <- getRaceConflict(accesses(functionName1), accesses(functionName2))
         } yield global).toSet
+
+        val argumentAccess = Access(getReadsOfStatement(statement).filter(x => globals.contains(x)), Set.empty)
+        val argumentsConflicts = (for {
+          SpawnedThread(_, functionName) <- raceAbstractState.threads
+          global <- getRaceConflict(argumentAccess, accesses(functionName))
+        } yield global).toSet
+
+        val conflicts = threadsConflicts ++ argumentsConflicts
 
         if (conflicts.isEmpty) {
           newState
