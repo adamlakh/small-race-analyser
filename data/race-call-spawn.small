@@ -1,0 +1,19 @@
+global counter = 0;
+global other = 0;
+
+function increment() {
+    counter = counter + 1;
+    return 0;
+}
+
+function f() {
+    spawn(t, increment());
+    return 0;
+}
+
+function main() {
+    x = f();
+    a = other;
+    r = counter;
+    return r;
+}

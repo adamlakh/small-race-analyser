@@ -1,0 +1,17 @@
+global counter = 0;
+
+function increment() {
+    counter = counter + 1;
+    return 0;
+}
+
+function worker() {
+    spawn(t2, increment());
+    return 0;
+}
+
+function main() {
+    spawn(t1, worker());
+    r = counter;
+    return r;
+}
