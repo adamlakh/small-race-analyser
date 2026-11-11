@@ -21,6 +21,9 @@ def getAllStatements(body: List[Statement],
     case AssignStatement(_, _, functionCall: FunctionCall) if bodies.contains(functionCall.name) && !visited.contains(functionCall.name) => {
       statement :: getAllStatements(bodies(functionCall.name), bodies, visited + functionCall.name)
     }
+    case SpawnStatement(_, _, functionCall: FunctionCall) if bodies.contains(functionCall.name) && !visited.contains(functionCall.name) => {
+      statement :: getAllStatements(bodies(functionCall.name), bodies, visited + functionCall.name)
+    }
     case _ => List(statement)
   })
 }
