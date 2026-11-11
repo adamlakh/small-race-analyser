@@ -244,3 +244,60 @@ case class FunctionState[T <: Lattice[T]](
   }
 
 class InterproceduralAnalysisState[T <: Lattice[T]](val functions: Map[String, FunctionState[T]] = Map.empty[String, FunctionState[T]])
+
+
+case class SpawnedThread(name: String, functionName: String)
+
+class RaceAbstractState[T <: Lattice[T]](
+  val state: AbstractState[T],
+  val threads: Set[SpawnedThread] = Set.empty[SpawnedThread]
+) extends Lattice[RaceAbstractState[T]], State[T]{
+
+
+  def variables: Map[String, T] = state.variables
+
+  def apply(variable: String): T = {
+    state(variable)
+  }
+
+  def apply(update: (String, T)): RaceAbstractState[T] = {
+    new RaceAbstractState(state(update), threads)
+  }
+
+  override def toString: String = {
+    state.toString + s"threads: ${threads.map(_.name).mkString("{", ", ", "}")}\n"
+  }
+
+  override def equals(obj: Any): Boolean = {
+    obj match {
+      case other: RaceAbstractState[_] => state == other.state && threads == other.threads
+      case _ => false
+    }
+  }
+
+  override def hashCode(): Int = state.hashCode() + threads.hashCode()
+
+  def joinWith(other: RaceAbstractState[T], f: (T, T) => T): RaceAbstractState[T] = {
+    new RaceAbstractState(this.state.joinWith(other.state, f), this.threads ++ other.threads)
+  }
+
+  override def join(other: RaceAbstractState[T]): RaceAbstractState[T] = {
+    joinWith(other, (left, right) => left.join(right))
+  }
+
+  def meetWith(other: RaceAbstractState[T], f: (T, T) => T): RaceAbstractState[T] = {
+    new RaceAbstractState(this.state.meetWith(other.state, f), this.threads intersect other.threads)
+  }
+
+  override def meet(other: RaceAbstractState[T]): RaceAbstractState[T] = {
+    meetWith(other, (left, right) => left.meet(right))
+  }
+
+  def spawnThread(threadName: String, functionName: String): RaceAbstractState[T] = {
+    new RaceAbstractState(this.state, this.threads + SpawnedThread(threadName, functionName))
+  }
+
+  def joinThread(threadName: String): RaceAbstractState[T] = {
+    new RaceAbstractState(this.state, this.threads.filter(x => x.name != threadName))
+  }
+}

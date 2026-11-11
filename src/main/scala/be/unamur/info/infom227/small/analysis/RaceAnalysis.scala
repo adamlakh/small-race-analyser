@@ -43,40 +43,56 @@ enum RaceAnalysisAbstractValue  extends Lattice[RaceAnalysisAbstractValue]:
   }
 
 
-class RaceAnalysis(cfg: Cfg, globals: Set[String], accesses: Map[String, Access]) extends ForwardMayAnalyzer[AbstractState[RaceAnalysisAbstractValue]](cfg):
-  private val threads = scala.collection.mutable.Map.empty[String, String]
+class RaceAnalysis(cfg: Cfg, globals: Set[String], accesses: Map[String, Access]) extends ForwardMayAnalyzer[RaceAbstractState[RaceAnalysisAbstractValue]](cfg):
 
-  override def entryAbstractState(): AbstractState[RaceAnalysisAbstractValue] = AbstractState(globals.map {global => global -> RaceAnalysisAbstractValue.NoRace}.toMap)
+  override def entryAbstractState(): RaceAbstractState[RaceAnalysisAbstractValue] = RaceAbstractState(AbstractState(globals.map {global => global -> RaceAnalysisAbstractValue.NoRace}.toMap))
 
-  override def analyseStatement(abstractState: AbstractState[RaceAnalysisAbstractValue], statement: Statement): AbstractState[RaceAnalysisAbstractValue] = {
+  override def analyseStatement(raceAbstractState: RaceAbstractState[RaceAnalysisAbstractValue], statement: Statement): RaceAbstractState[RaceAnalysisAbstractValue] = {
     statement match {
       case SpawnStatement(lineNumber, threadName, functionCall: FunctionCall) => {
-        threads += (threadName -> functionCall.name)
+        val newState = raceAbstractState.spawnThread(threadName, functionCall.name)
 
         val conflicts = (for {
-          (threadName1, functionName1) <- threads
-          (threadName2, functionName2) <- threads
+          SpawnedThread(threadName1, functionName1) <- newState.threads
+          SpawnedThread(threadName2, functionName2) <- newState.threads
           if threadName1 != threadName2
           global <- getRaceConflict(accesses(functionName1), accesses(functionName2))
         } yield global).toSet
 
         if (conflicts.isEmpty) {
-          abstractState
+          newState
         } else {
-          AbstractState(abstractState.variables ++ conflicts.map(global => global -> RaceAnalysisAbstractValue.Race))
+          RaceAbstractState(AbstractState(newState.variables ++ conflicts.map(global => global -> RaceAnalysisAbstractValue.Race)),
+            newState.threads
+          )
         }
       }
       case JoinStatement(lineNumber, threadName) => {
-        threads -= threadName
-        abstractState
+        raceAbstractState.joinThread(threadName)
       }
-      case _ => abstractState
+      case _ => {
+
+        val statementAccess = Access(getReadsOfStatement(statement).filter(globals.contains), getWritesOfStatement(statement).filter(globals.contains))
+
+        val conflicts = (for {
+          SpawnedThread(_, functionName) <- raceAbstractState.threads
+          global <- getRaceConflict(statementAccess, accesses(functionName))
+        } yield global).toSet
+
+        if (conflicts.isEmpty) {
+          raceAbstractState
+        } else {
+          RaceAbstractState(AbstractState(raceAbstractState.variables ++ conflicts.map(global => global -> RaceAnalysisAbstractValue.Race)),
+            raceAbstractState.threads
+          )
+        }
+      }
     }
   }
 
-  override def conditionUpdate(abstractState: AbstractState[RaceAnalysisAbstractValue], condition: BooleanExpression): Option[AbstractState[RaceAnalysisAbstractValue]] = {
+  override def conditionUpdate(raceAbstractState: RaceAbstractState[RaceAnalysisAbstractValue], condition: BooleanExpression): Option[RaceAbstractState[RaceAnalysisAbstractValue]] = {
     condition match {
       case BooleanConstant(false) => None
-      case _ => Some(abstractState)
+      case _ => Some(raceAbstractState)
     }
   }
