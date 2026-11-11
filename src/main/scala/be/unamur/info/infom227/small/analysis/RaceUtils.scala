@@ -10,12 +10,17 @@ def getBodies(program: Program): Map[String, List[Statement]] = {
   }
 }
 
-def getAllStatements(body: List[Statement]): List[Statement] = {
+def getAllStatements(body: List[Statement],
+                     bodies: Map[String, List[Statement]],
+                     visited: Set[String]): List[Statement] = {
   body.flatMap(statement => statement match {
     case IfStatement(_, _, ifBody, elseBody) =>
-      statement :: (getAllStatements(ifBody) ::: getAllStatements(elseBody))
+      statement :: (getAllStatements(ifBody, bodies, visited) ::: getAllStatements(elseBody, bodies, visited))
     case WhileStatement(_, _, whileBody) =>
-      statement :: getAllStatements(whileBody)
+      statement :: getAllStatements(whileBody, bodies, visited)
+    case AssignStatement(_, _, functionCall: FunctionCall) if bodies.contains(functionCall.name) && !visited.contains(functionCall.name) => {
+      statement :: getAllStatements(bodies(functionCall.name), bodies, visited + functionCall.name)
+    }
     case _ => List(statement)
   })
 }
@@ -52,9 +57,10 @@ case class Access(reads: Set[String], writes: Set[String])
 
 def getReadsAndWrites(program: Program): Map[String, Access] = {
   val globals = getGlobals(program)
+  val bodies = getBodies(program)
   for {
-    (name, body) <- getBodies(program)
-    statements = getAllStatements(body)
+    (name, body) <- bodies
+    statements = getAllStatements(body, bodies, Set(name))
     reads = statements.flatMap(x => getReadsOfStatement(x)).toSet.filter(x => globals.contains(x))
     writes = statements.flatMap(x => getWritesOfStatement(x)).toSet.filter(x => globals.contains(x))
   } yield name -> Access(reads, writes)
