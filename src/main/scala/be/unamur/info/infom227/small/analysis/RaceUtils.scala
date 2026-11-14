@@ -56,7 +56,7 @@ def getReadsOfStatement(statement: Statement): Set[String] = statement match {
   case JoinStatement(_, _) => Set.empty
 }
 
-case class Access(reads: Set[String], writes: Set[String])
+case class Access(reads: Set[String], writes: Set[String], spawned: Set[SpawnedThread] = Set.empty )
 
 def getReadsAndWrites(program: Program): Map[String, Access] = {
   val globals = getGlobals(program)
@@ -66,7 +66,11 @@ def getReadsAndWrites(program: Program): Map[String, Access] = {
     statements = getAllStatements(body, bodies, Set(name))
     reads = statements.flatMap(x => getReadsOfStatement(x)).toSet.filter(x => globals.contains(x))
     writes = statements.flatMap(x => getWritesOfStatement(x)).toSet.filter(x => globals.contains(x))
-  } yield name -> Access(reads, writes)
+    spawned = statements.flatMap(x => x match {
+      case SpawnStatement(_, threadName, call) => Set(SpawnedThread(threadName, call.name))
+      case _ => Set.empty[SpawnedThread]
+    }).toSet
+  } yield name -> Access(reads, writes, spawned)
 }
 
 def getRaceConflict(first: Access, second: Access): Set[String] = {

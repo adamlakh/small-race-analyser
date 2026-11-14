@@ -78,15 +78,34 @@ class RaceAnalysis(cfg: Cfg, globals: Set[String], accesses: Map[String, Access]
       case JoinStatement(lineNumber, threadName) => {
         raceAbstractState.joinThread(threadName)
       }
-      case _ => {
-        val callAccess = statement match {
-          case AssignStatement(_, _, functionCall: FunctionCall) =>
-            accesses.getOrElse(functionCall.name, Access(Set.empty, Set.empty))
-          case _ => Access(Set.empty, Set.empty)
+      case AssignStatement(_, _, functionCall: FunctionCall) => {
+        val summary = if (accesses.contains(functionCall.name)) {
+          accesses(functionCall.name)
+        } else {
+          Access(Set.empty, Set.empty)
         }
 
-        val statementAccess = Access(getReadsOfStatement(statement).filter(globals.contains) ++ callAccess.reads,
-          getWritesOfStatement(statement).filter(globals.contains) ++ callAccess.writes)
+        val statementAccess = Access(
+          getReadsOfStatement(statement).filter(globals.contains) ++ summary.reads,
+          getWritesOfStatement(statement).filter(globals.contains) ++ summary.writes
+        )
+
+        val conflicts = (for {
+          SpawnedThread(_, functionName) <- raceAbstractState.threads
+          global <- getRaceConflict(statementAccess, accesses(functionName))
+        } yield global).toSet
+
+        RaceAbstractState(
+          AbstractState(raceAbstractState.variables ++ conflicts.map(global => global -> RaceAnalysisAbstractValue.Race)),
+          raceAbstractState.threads ++ summary.spawned
+        )
+      }
+      case _ => {
+        val statementAccess = Access(
+          getReadsOfStatement(statement).filter(globals.contains),
+          getWritesOfStatement(statement).filter(globals.contains)
+        )
+
         val conflicts = (for {
           SpawnedThread(_, functionName) <- raceAbstractState.threads
           global <- getRaceConflict(statementAccess, accesses(functionName))
@@ -95,7 +114,8 @@ class RaceAnalysis(cfg: Cfg, globals: Set[String], accesses: Map[String, Access]
         if (conflicts.isEmpty) {
           raceAbstractState
         } else {
-          RaceAbstractState(AbstractState(raceAbstractState.variables ++ conflicts.map(global => global -> RaceAnalysisAbstractValue.Race)),
+          RaceAbstractState(
+            AbstractState(raceAbstractState.variables ++ conflicts.map(global => global -> RaceAnalysisAbstractValue.Race)),
             raceAbstractState.threads
           )
         }
