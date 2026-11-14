@@ -51,6 +51,8 @@ class RaceAnalysis(cfg: Cfg, globals: Set[String], accesses: Map[String, Access]
     statement match {
       case SpawnStatement(lineNumber, threadName, functionCall: FunctionCall) => {
         val newState = raceAbstractState.spawnThread(threadName, functionCall.name)
+        //threads spawned inside the new thread
+        val innerThreads = accesses(functionCall.name).spawned
 
         val threadsConflicts = (for {
           SpawnedThread(threadName1, functionName1) <- newState.threads
@@ -68,10 +70,10 @@ class RaceAnalysis(cfg: Cfg, globals: Set[String], accesses: Map[String, Access]
         val conflicts = threadsConflicts ++ argumentsConflicts
 
         if (conflicts.isEmpty) {
-          newState
+          RaceAbstractState(AbstractState(newState.variables), newState.threads ++ innerThreads)
         } else {
           RaceAbstractState(AbstractState(newState.variables ++ conflicts.map(global => global -> RaceAnalysisAbstractValue.Race)),
-            newState.threads
+            newState.threads ++ innerThreads
           )
         }
       }
